@@ -1,0 +1,29 @@
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+bin/
+dist/
+build/
+
+# Go test and coverage output
+coverage.out
+*.coverprofile
+
+# Crawler output
+output/
+output-*/
+
+# Logs and temporary files
+*.log
+*.tmp
+tmp/
+temp/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
