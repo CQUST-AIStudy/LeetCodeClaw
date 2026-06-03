@@ -17,6 +17,8 @@ output/
 output-*/
 
 # Logs and temporary files
+.env
+.env.local
 *.log
 *.tmp
 tmp/

@@ -48,6 +48,24 @@ type FailedProblem struct {
 	Error string `json:"error"`
 }
 
+type SearchOptions struct {
+	Keyword    string
+	Limit      int
+	Difficulty string
+}
+
+type SearchCandidate struct {
+	QuestionID         string     `json:"questionId"`
+	QuestionFrontendID string     `json:"questionFrontendId"`
+	Title              string     `json:"title"`
+	TitleSlug          string     `json:"titleSlug"`
+	TranslatedTitle    string     `json:"translatedTitle,omitempty"`
+	Difficulty         string     `json:"difficulty"`
+	Tags               []TopicTag `json:"tags"`
+	Score              float64    `json:"score"`
+	Reason             string     `json:"reason"`
+}
+
 func wantedLanguages() map[string]string {
 	return map[string]string{
 		"c":   "c",
