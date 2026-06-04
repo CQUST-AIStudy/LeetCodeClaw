@@ -58,8 +58,8 @@ func (s *Store) CheckSchema(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
-	if err := s.requireColumns(ctx, "leetcode_problem_tag", "problem_id", "tag_type", "tag_value", "confidence"); err != nil {
-		return fmt.Errorf("%w; please align leetcode_problem_tag with Java Mapper fields tag_type/tag_value/confidence", err)
+	if err := s.requireColumns(ctx, "leetcode_problem_tag", "problem_id", "tag_name", "tag_category", "relevance_score", "is_primary"); err != nil {
+		return fmt.Errorf("%w; please align leetcode_problem_tag with Java Mapper fields tag_name/tag_category/relevance_score/is_primary", err)
 	}
 	return nil
 }
@@ -134,8 +134,8 @@ ON DUPLICATE KEY UPDATE
 	}
 	for _, tag := range TagsFromLeetCode(problem.Tags) {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO leetcode_problem_tag (problem_id, tag_type, tag_value, confidence) VALUES (?, ?, ?, ?)`,
-			problemID, tag.Type, tag.Value, tag.Confidence,
+			`INSERT INTO leetcode_problem_tag (problem_id, tag_name, tag_category, relevance_score, is_primary) VALUES (?, ?, ?, ?, ?)`,
+			problemID, tag.Value, tag.Type, tag.Confidence, tag.IsPrimary,
 		); err != nil {
 			return PersistResult{}, err
 		}
@@ -200,7 +200,7 @@ LIMIT 1`, "slug:"+slug, problemURL(slug))
 
 func (s *Store) findTags(ctx context.Context, problemID int64) ([]leetcode.TopicTag, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT tag_type, tag_value FROM leetcode_problem_tag WHERE problem_id = ? ORDER BY confidence DESC, id ASC`, problemID)
+SELECT tag_category, tag_name FROM leetcode_problem_tag WHERE problem_id = ? ORDER BY relevance_score DESC, id ASC`, problemID)
 	if err != nil {
 		return nil, err
 	}
@@ -273,6 +273,7 @@ type ProblemTagRecord struct {
 	Type       string
 	Value      string
 	Confidence float64
+	IsPrimary  bool
 }
 
 func ProblemRecordFromLeetCode(problem leetcode.Problem) ProblemRecord {
@@ -321,10 +322,11 @@ func TagsFromLeetCode(tags []leetcode.TopicTag) []ProblemTagRecord {
 			Type:       tagCategory(value),
 			Value:      value,
 			Confidence: confidence,
+			IsPrimary:  i == 0,
 		})
 	}
 	if len(result) == 0 {
-		result = append(result, ProblemTagRecord{Type: "algorithm", Value: "algorithm", Confidence: 0.60})
+		result = append(result, ProblemTagRecord{Type: "algorithm", Value: "algorithm", Confidence: 0.60, IsPrimary: true})
 	}
 	return result
 }

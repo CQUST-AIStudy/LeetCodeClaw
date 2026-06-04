@@ -53,10 +53,10 @@ func TestTagsFromLeetCodeDeduplicatesAndCategorizes(t *testing.T) {
 	if len(tags) != 2 {
 		t.Fatalf("len(tags) = %d, want 2", len(tags))
 	}
-	if tags[0].Type != "data_structure" || tags[0].Confidence != 0.95 {
+	if tags[0].Type != "data_structure" || tags[0].Confidence != 0.95 || !tags[0].IsPrimary {
 		t.Fatalf("first tag = %+v", tags[0])
 	}
-	if tags[1].Type != "technique" {
+	if tags[1].Type != "technique" || tags[1].IsPrimary {
 		t.Fatalf("second tag = %+v", tags[1])
 	}
 }

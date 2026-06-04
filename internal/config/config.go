@@ -77,7 +77,7 @@ func (c DatabaseConfig) DSN() string {
 		ParseTime: true,
 		Loc:       time.Local,
 		Params: map[string]string{
-			"charset": "utf8mb4,utf8",
+			"charset": "utf8mb4",
 		},
 	}
 	return cfg.FormatDSN()
