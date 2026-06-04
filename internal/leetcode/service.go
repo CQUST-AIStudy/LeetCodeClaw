@@ -525,25 +525,30 @@ func convertTags(tags []topicTagNode) []TopicTag {
 }
 
 func filterCodeSnippets(snippets []codeSnippetNode) []CodeSnippet {
-	result := make([]CodeSnippet, 0, 4)
+	result := make([]CodeSnippet, 0, len(snippets))
 	seen := map[string]bool{}
 	for _, snippet := range snippets {
-		canonical, ok := canonicalLanguage(strings.ToLower(snippet.LangSlug))
-		if !ok {
+		if strings.TrimSpace(snippet.Code) == "" {
 			continue
 		}
-		if seen[canonical] {
+		key := starterSnippetKey(snippet.LangSlug, snippet.Lang)
+		if key == "" || seen[key] {
 			continue
 		}
-		seen[canonical] = true
+		seen[key] = true
 		result = append(result, CodeSnippet{
-			Lang:     snippet.Lang,
-			LangSlug: snippet.LangSlug,
+			Lang:     strings.TrimSpace(snippet.Lang),
+			LangSlug: strings.TrimSpace(snippet.LangSlug),
 			Code:     snippet.Code,
 		})
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return languageOrder(result[i].LangSlug) < languageOrder(result[j].LangSlug)
+	sort.SliceStable(result, func(i, j int) bool {
+		left := starterLanguageOrder(result[i].LangSlug, result[i].Lang)
+		right := starterLanguageOrder(result[j].LangSlug, result[j].Lang)
+		if left != right {
+			return left < right
+		}
+		return strings.ToLower(result[i].LangSlug+result[i].Lang) < strings.ToLower(result[j].LangSlug+result[j].Lang)
 	})
 	return result
 }
@@ -661,6 +666,61 @@ func languageOrder(langSlug string) int {
 	default:
 		return 99
 	}
+}
+
+func starterSnippetKey(values ...string) string {
+	for _, value := range values {
+		if canonical, ok := canonicalStarterLanguage(value); ok {
+			return "starter:" + canonical
+		}
+	}
+	for _, value := range values {
+		value = normalizeLanguageToken(value)
+		if value != "" {
+			return "raw:" + value
+		}
+	}
+	return ""
+}
+
+func canonicalStarterLanguage(value string) (string, bool) {
+	value = normalizeLanguageToken(value)
+	canonical, ok := starterLanguages()[value]
+	return canonical, ok
+}
+
+func normalizeLanguageToken(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return ""
+	}
+	value = strings.Trim(value, " \t\r\n{}[]()")
+	if fields := strings.Fields(value); len(fields) > 0 {
+		value = fields[0]
+	}
+	return strings.Trim(value, " \t\r\n{}[]()")
+}
+
+func starterLanguageOrder(values ...string) int {
+	for _, value := range values {
+		canonical, ok := canonicalStarterLanguage(value)
+		if !ok {
+			continue
+		}
+		switch canonical {
+		case "java":
+			return 0
+		case "python":
+			return 1
+		case "c":
+			return 2
+		case "cpp":
+			return 3
+		case "javascript":
+			return 4
+		}
+	}
+	return 99
 }
 
 func extractLanguageCode(markdown string) map[string]string {

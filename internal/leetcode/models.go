@@ -84,3 +84,19 @@ func canonicalLanguage(langSlug string) (string, bool) {
 func targetLanguages() []string {
 	return []string{"c", "cpp"}
 }
+
+func starterLanguages() map[string]string {
+	return map[string]string{
+		"java":       "java",
+		"python":     "python",
+		"python3":    "python",
+		"py":         "python",
+		"c":          "c",
+		"cpp":        "cpp",
+		"c++":        "cpp",
+		"cc":         "cpp",
+		"cxx":        "cpp",
+		"javascript": "javascript",
+		"js":         "javascript",
+	}
+}

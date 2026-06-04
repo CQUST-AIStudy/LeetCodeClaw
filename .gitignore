@@ -1,31 +1,51 @@
-# Build artifacts
+# Go build artifacts
+bin/
+build/
+dist/
 *.exe
+*.exe~
 *.dll
 *.so
 *.dylib
 *.test
-bin/
-dist/
-build/
+*.out
 
 # Go test and coverage output
 coverage.out
+coverage.html
 *.coverprofile
+*.prof
+*.pprof
 
-# Crawler output
+# Local environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Crawler/API output and local data
+tools/
 output/
 output-*/
+downloads/
+exports/
+data/
+*.db
+*.sqlite
+*.sqlite3
 
 # Logs and temporary files
-.env
-.env.local
 *.log
 *.tmp
 tmp/
 temp/
+.cache/
 
 # Editor and OS files
 .vscode/
 .idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
+desktop.ini

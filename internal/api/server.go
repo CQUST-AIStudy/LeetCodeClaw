@@ -21,12 +21,17 @@ type Store interface {
 	FindProblemBySlug(context.Context, string) (*leetcode.Problem, error)
 }
 
+type ProblemService interface {
+	SearchProblems(context.Context, leetcode.SearchOptions) ([]leetcode.SearchCandidate, error)
+	CrawlProblem(context.Context, string) (leetcode.Problem, error)
+}
+
 type Server struct {
-	service *leetcode.ProblemService
+	service ProblemService
 	store   Store
 }
 
-func NewServer(service *leetcode.ProblemService, store Store) *Server {
+func NewServer(service ProblemService, store Store) *Server {
 	return &Server{service: service, store: store}
 }
 
@@ -140,6 +145,7 @@ type keywordRecommendResponse struct {
 	Keyword string                 `json:"keyword"`
 	Items   []keywordRecommendItem `json:"items"`
 	Failed  []failedResponse       `json:"failed"`
+	Omitted []omittedRecommendItem `json:"omitted,omitempty"`
 }
 
 type keywordRecommendItem struct {
@@ -152,6 +158,13 @@ type keywordRecommendItem struct {
 	Persist   *storage.PersistResult `json:"persist,omitempty"`
 	Warnings  []string               `json:"warnings,omitempty"`
 	Errors    []string               `json:"errors,omitempty"`
+}
+
+type omittedRecommendItem struct {
+	Slug   string   `json:"slug"`
+	Title  string   `json:"title"`
+	Reason string   `json:"reason"`
+	Errors []string `json:"errors,omitempty"`
 }
 
 func (s *Server) handleKeywordRecommend(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +194,7 @@ func (s *Server) handleKeywordRecommend(w http.ResponseWriter, r *http.Request) 
 
 	candidates, err := s.service.SearchProblems(r.Context(), leetcode.SearchOptions{
 		Keyword:    req.Keyword,
-		Limit:      req.Limit,
+		Limit:      expandedRecommendLimit(req.Limit),
 		Difficulty: req.Difficulty,
 	})
 	if err != nil {
@@ -194,9 +207,21 @@ func (s *Server) handleKeywordRecommend(w http.ResponseWriter, r *http.Request) 
 		Keyword: req.Keyword,
 	}
 	for _, candidate := range candidates {
+		if len(resp.Items) >= req.Limit {
+			break
+		}
 		item, err := s.crawlOne(r.Context(), candidate.TitleSlug, persist)
 		if err != nil {
 			resp.Failed = append(resp.Failed, failedResponse{Slug: candidate.TitleSlug, Error: err.Error()})
+			continue
+		}
+		if isMissingSolutionContent(item) {
+			resp.Omitted = append(resp.Omitted, omittedRecommendItem{
+				Slug:   firstNonEmptyText(item.Slug, candidate.TitleSlug),
+				Title:  firstNonEmptyText(item.Problem.TranslatedTitle, item.Problem.Title, candidate.TranslatedTitle, candidate.Title),
+				Reason: "题解正文缺失",
+				Errors: item.Errors,
+			})
 			continue
 		}
 		resp.Items = append(resp.Items, keywordRecommendItem{
@@ -315,6 +340,30 @@ func enrichReason(reason string, item crawlItem) string {
 		return "关键词候选推荐"
 	}
 	return strings.Join(reasons, "，")
+}
+
+func expandedRecommendLimit(limit int) int {
+	expanded := limit * 3
+	if expanded < limit {
+		return limit
+	}
+	if expanded > 50 {
+		return 50
+	}
+	return expanded
+}
+
+func isMissingSolutionContent(item crawlItem) bool {
+	return strings.TrimSpace(item.Problem.Solution.ContentMarkdown) == ""
+}
+
+func firstNonEmptyText(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {

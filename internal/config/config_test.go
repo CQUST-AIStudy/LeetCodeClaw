@@ -96,6 +96,15 @@ func TestLoadReadsDotEnvFromWorkingDirectory(t *testing.T) {
 	}
 }
 
+func TestLoadUsesMainBackendDatabasePortByDefault(t *testing.T) {
+	clearEnv(t, "DB_PORT")
+
+	cfg := loadFromEnv()
+	if cfg.Database.Port != "3307" {
+		t.Fatalf("Database.Port = %q, want %q", cfg.Database.Port, "3307")
+	}
+}
+
 func TestLoadDotEnvRejectsMalformedLines(t *testing.T) {
 	path := writeDotEnv(t, `LEETCODE_CLAW_BAD_LINE`)
 

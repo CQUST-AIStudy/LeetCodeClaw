@@ -58,7 +58,7 @@ func loadFromEnv() Config {
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "127.0.0.1"),
-			Port:     getEnv("DB_PORT", "3306"),
+			Port:     getEnv("DB_PORT", "3307"),
 			Name:     getEnv("DB_NAME", "ptadatabase"),
 			Username: getEnv("DB_USERNAME", "root"),
 			Password: firstNonEmpty(os.Getenv("DB_PASSWORD"), os.Getenv("DB_PASS")),

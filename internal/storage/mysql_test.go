@@ -14,7 +14,11 @@ func TestProblemRecordFromLeetCode(t *testing.T) {
 		TitleSlug:          "binary-tree-level-order-traversal",
 		TranslatedTitle:    "二叉树的层序遍历",
 		Difficulty:         "Medium",
-		ContentMarkdown:    "题面",
+		CodeSnippets: []leetcode.CodeSnippet{
+			{Lang: "Java", LangSlug: "java", Code: "class Solution { public int[] levelOrder(TreeNode root) { return new int[0]; } }"},
+			{Lang: "C++", LangSlug: "cpp", Code: "class Solution { public: int getNumber(TreeNode* root) { return 0; } };"},
+		},
+		ContentMarkdown: "题面",
 		Solution: leetcode.Solution{
 			ContentMarkdown: "题解",
 			CodeByLanguage: map[string]string{
@@ -41,6 +45,19 @@ func TestProblemRecordFromLeetCode(t *testing.T) {
 	}
 	if !strings.Contains(record.SolutionText, "class Solution") {
 		t.Fatalf("SolutionText missing code: %q", record.SolutionText)
+	}
+	if !strings.Contains(record.CodeSnippetsJSON, "getNumber") {
+		t.Fatalf("CodeSnippetsJSON missing starter code: %q", record.CodeSnippetsJSON)
+	}
+	if !strings.Contains(record.CodeSnippetsJSON, "levelOrder") {
+		t.Fatalf("CodeSnippetsJSON missing java starter code: %q", record.CodeSnippetsJSON)
+	}
+	decoded := decodeCodeSnippets(record.CodeSnippetsJSON)
+	if len(decoded) != 2 || decoded[0].LangSlug != "java" || decoded[1].LangSlug != "cpp" {
+		t.Fatalf("decoded snippets = %+v", decoded)
+	}
+	if !strings.Contains(decoded[0].Code, "levelOrder") || !strings.Contains(decoded[1].Code, "getNumber") {
+		t.Fatalf("decoded snippets = %+v", decoded)
 	}
 }
 

@@ -10,18 +10,25 @@ func TestFilterCodeSnippetsMapsWantedLanguages(t *testing.T) {
 		{Lang: "C++", LangSlug: "cpp", Code: "class Solution {};"},
 		{Lang: "Go", LangSlug: "golang", Code: "func twoSum() {}"},
 		{Lang: "JavaScript", LangSlug: "javascript", Code: "var twoSum = function() {};"},
+		{Lang: "Python", LangSlug: "python", Code: ""},
 	}
 
 	got := filterCodeSnippets(input)
-	if len(got) != 2 {
-		t.Fatalf("expected 2 snippets, got %d", len(got))
+	if len(got) != 6 {
+		t.Fatalf("expected 6 snippets, got %d: %+v", len(got), got)
 	}
 
-	want := []string{"c", "cpp"}
-	for i, langSlug := range want {
-		if got[i].LangSlug != langSlug {
-			t.Fatalf("snippet %d langSlug = %q, want %q", i, got[i].LangSlug, langSlug)
+	seen := map[string]bool{}
+	for _, snippet := range got {
+		seen[snippet.LangSlug] = true
+	}
+	for _, langSlug := range []string{"java", "python3", "c", "cpp", "javascript", "golang"} {
+		if !seen[langSlug] {
+			t.Fatalf("missing snippet langSlug %q in %+v", langSlug, got)
 		}
+	}
+	if got[0].LangSlug != "java" || got[1].LangSlug != "python3" {
+		t.Fatalf("supported snippets should be ordered first, got %+v", got)
 	}
 }
 

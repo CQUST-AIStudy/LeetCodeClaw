@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -52,9 +53,12 @@ func (s *Store) Ping(ctx context.Context) error {
 }
 
 func (s *Store) CheckSchema(ctx context.Context) error {
+	if err := s.ensureCodeSnippetsColumn(ctx); err != nil {
+		return err
+	}
 	if err := s.requireColumns(ctx, "leetcode_problem_bank",
 		"source_key", "problem_code", "numeric_id", "title_main", "title_alt",
-		"problem_text", "solution_text", "source_url", "difficulty", "estimated_minutes", "quality_score",
+		"problem_text", "solution_text", "code_snippets_json", "source_url", "difficulty", "estimated_minutes", "quality_score",
 	); err != nil {
 		return err
 	}
@@ -70,6 +74,9 @@ func (s *Store) UpsertProblem(ctx context.Context, problem leetcode.Problem) (Pe
 	}
 	if strings.TrimSpace(problem.TitleSlug) == "" {
 		return PersistResult{}, errors.New("problem titleSlug is empty")
+	}
+	if err := s.ensureCodeSnippetsColumn(ctx); err != nil {
+		return PersistResult{}, err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -88,8 +95,8 @@ func (s *Store) UpsertProblem(ctx context.Context, problem leetcode.Problem) (Pe
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO leetcode_problem_bank (
   source_key, problem_code, numeric_id, title_main, title_alt,
-  problem_text, solution_text, source_url, difficulty, estimated_minutes, quality_score
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  problem_text, solution_text, code_snippets_json, source_url, difficulty, estimated_minutes, quality_score
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
   id = LAST_INSERT_ID(id),
   problem_code = VALUES(problem_code),
@@ -98,6 +105,7 @@ ON DUPLICATE KEY UPDATE
   title_alt = VALUES(title_alt),
   problem_text = VALUES(problem_text),
   solution_text = VALUES(solution_text),
+  code_snippets_json = VALUES(code_snippets_json),
   source_url = VALUES(source_url),
   difficulty = VALUES(difficulty),
   estimated_minutes = VALUES(estimated_minutes),
@@ -110,6 +118,7 @@ ON DUPLICATE KEY UPDATE
 		nullString(record.TitleAlt),
 		record.ProblemText,
 		record.SolutionText,
+		nullString(record.CodeSnippetsJSON),
 		nullString(record.SourceURL),
 		record.Difficulty,
 		record.EstimatedMinutes,
@@ -159,21 +168,40 @@ func (s *Store) FindProblemBySlug(ctx context.Context, slug string) (*leetcode.P
 		return nil, errors.New("slug is required")
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	hasCodeSnippets, err := s.hasColumn(ctx, "leetcode_problem_bank", "code_snippets_json")
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
 SELECT id, problem_code, numeric_id, title_main, title_alt, problem_text, solution_text, source_url, difficulty
 FROM leetcode_problem_bank
 WHERE source_key = ? OR source_url = ?
-LIMIT 1`, "slug:"+slug, problemURL(slug))
+LIMIT 1`
+	if hasCodeSnippets {
+		query = `
+SELECT id, problem_code, numeric_id, title_main, title_alt, problem_text, solution_text, source_url, difficulty, code_snippets_json
+FROM leetcode_problem_bank
+WHERE source_key = ? OR source_url = ?
+LIMIT 1`
+	}
+	row := s.db.QueryRowContext(ctx, query, "slug:"+slug, problemURL(slug))
 
 	var id int64
-	var problemCode, titleAlt, sourceURL sql.NullString
+	var problemCode, titleAlt, sourceURL, codeSnippetsJSON sql.NullString
 	var numericID sql.NullInt64
 	var titleMain, problemText, solutionText, difficulty string
-	if err := row.Scan(&id, &problemCode, &numericID, &titleMain, &titleAlt, &problemText, &solutionText, &sourceURL, &difficulty); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	var scanErr error
+	if hasCodeSnippets {
+		scanErr = row.Scan(&id, &problemCode, &numericID, &titleMain, &titleAlt, &problemText, &solutionText, &sourceURL, &difficulty, &codeSnippetsJSON)
+	} else {
+		scanErr = row.Scan(&id, &problemCode, &numericID, &titleMain, &titleAlt, &problemText, &solutionText, &sourceURL, &difficulty)
+	}
+	if scanErr != nil {
+		if errors.Is(scanErr, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, scanErr
 	}
 
 	tags, err := s.findTags(ctx, id)
@@ -188,6 +216,7 @@ LIMIT 1`, "slug:"+slug, problemURL(slug))
 		Difficulty:         leetcode.NormalizeDifficulty(difficulty),
 		Tags:               tags,
 		ContentMarkdown:    problemText,
+		CodeSnippets:       decodeCodeSnippets(codeSnippetsJSON.String),
 		Solution: leetcode.Solution{
 			Source:          "local database",
 			SourceSlug:      slug,
@@ -255,6 +284,34 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`, tableName)
 	return nil
 }
 
+func (s *Store) ensureCodeSnippetsColumn(ctx context.Context) error {
+	exists, err := s.hasColumn(ctx, "leetcode_problem_bank", "code_snippets_json")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE leetcode_problem_bank ADD COLUMN code_snippets_json LONGTEXT NULL AFTER solution_text`); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Store) hasColumn(ctx context.Context, tableName, columnName string) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`, tableName, columnName).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 type ProblemRecord struct {
 	SourceKey        string
 	ProblemCode      string
@@ -263,6 +320,7 @@ type ProblemRecord struct {
 	TitleAlt         string
 	ProblemText      string
 	SolutionText     string
+	CodeSnippetsJSON string
 	SourceURL        string
 	Difficulty       string
 	EstimatedMinutes int
@@ -291,11 +349,46 @@ func ProblemRecordFromLeetCode(problem leetcode.Problem) ProblemRecord {
 		TitleAlt:         titleAlt,
 		ProblemText:      strings.TrimSpace(problem.ContentMarkdown),
 		SolutionText:     buildSolutionText(problem.Solution),
+		CodeSnippetsJSON: encodeCodeSnippets(problem.CodeSnippets),
 		SourceURL:        problemURL(problem.TitleSlug),
 		Difficulty:       leetcode.NormalizeDifficulty(problem.Difficulty),
 		EstimatedMinutes: estimatedMinutes(problem.Difficulty),
 		QualityScore:     qualityScore(problem),
 	}
+}
+
+func encodeCodeSnippets(snippets []leetcode.CodeSnippet) string {
+	cleaned := make([]leetcode.CodeSnippet, 0, len(snippets))
+	for _, snippet := range snippets {
+		if strings.TrimSpace(snippet.Code) == "" {
+			continue
+		}
+		cleaned = append(cleaned, leetcode.CodeSnippet{
+			Lang:     strings.TrimSpace(snippet.Lang),
+			LangSlug: strings.TrimSpace(snippet.LangSlug),
+			Code:     snippet.Code,
+		})
+	}
+	if len(cleaned) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(cleaned)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func decodeCodeSnippets(raw string) []leetcode.CodeSnippet {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var snippets []leetcode.CodeSnippet
+	if err := json.Unmarshal([]byte(raw), &snippets); err != nil {
+		return nil
+	}
+	return snippets
 }
 
 func TagsFromLeetCode(tags []leetcode.TopicTag) []ProblemTagRecord {
