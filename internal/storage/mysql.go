@@ -105,7 +105,10 @@ ON DUPLICATE KEY UPDATE
   title_alt = VALUES(title_alt),
   problem_text = VALUES(problem_text),
   solution_text = VALUES(solution_text),
-  code_snippets_json = VALUES(code_snippets_json),
+  code_snippets_json = CASE
+    WHEN VALUES(code_snippets_json) IS NULL OR VALUES(code_snippets_json) = '' THEN code_snippets_json
+    ELSE VALUES(code_snippets_json)
+  END,
   source_url = VALUES(source_url),
   difficulty = VALUES(difficulty),
   estimated_minutes = VALUES(estimated_minutes),

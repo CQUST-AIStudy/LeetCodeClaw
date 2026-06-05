@@ -32,6 +32,19 @@ func TestFilterCodeSnippetsMapsWantedLanguages(t *testing.T) {
 	}
 }
 
+func TestAppendMissingSnippetsRecordsEmptyStarterResponse(t *testing.T) {
+	problem := Problem{}
+
+	appendMissingSnippets(&problem)
+
+	if len(problem.Errors) == 0 {
+		t.Fatal("expected starter snippet warnings")
+	}
+	if problem.Errors[0] != "starter code snippets missing from LeetCode response" {
+		t.Fatalf("first warning = %q", problem.Errors[0])
+	}
+}
+
 func TestBuildSolutionRecordsMissingLanguages(t *testing.T) {
 	solution, warnings := buildSolution("题解", "solution-slug", "two-sum", `<pre><code class="language-c">int main() { return 0; }</code></pre>`, "test")
 	if len(warnings) != 0 {

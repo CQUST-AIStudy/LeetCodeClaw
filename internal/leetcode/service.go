@@ -554,6 +554,9 @@ func filterCodeSnippets(snippets []codeSnippetNode) []CodeSnippet {
 }
 
 func appendMissingSnippets(problem *Problem) {
+	if len(problem.CodeSnippets) == 0 {
+		problem.Errors = append(problem.Errors, "starter code snippets missing from LeetCode response")
+	}
 	present := map[string]bool{}
 	for _, snippet := range problem.CodeSnippets {
 		if canonical, ok := canonicalLanguage(strings.ToLower(snippet.LangSlug)); ok {
