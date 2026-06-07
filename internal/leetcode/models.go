@@ -54,6 +54,10 @@ type SearchOptions struct {
 	Difficulty string
 }
 
+type PublicProblemListOptions struct {
+	PageSize int
+}
+
 type SearchCandidate struct {
 	QuestionID         string     `json:"questionId"`
 	QuestionFrontendID string     `json:"questionFrontendId"`

@@ -2,6 +2,7 @@
 bin/
 build/
 dist/
+/leetcode-api
 *.exe
 *.exe~
 *.dll
@@ -22,6 +23,11 @@ coverage.html
 .env.*
 !.env.example
 !.env.*.example
+
+# Docker local state
+docker-data/
+mysql-data/
+.docker/
 
 # Crawler/API output and local data
 tools/

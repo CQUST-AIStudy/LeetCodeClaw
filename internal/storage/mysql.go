@@ -56,6 +56,9 @@ func (s *Store) CheckSchema(ctx context.Context) error {
 	if err := s.ensureCodeSnippetsColumn(ctx); err != nil {
 		return err
 	}
+	if err := s.EnsureCrawlJobSchema(ctx); err != nil {
+		return err
+	}
 	if err := s.requireColumns(ctx, "leetcode_problem_bank",
 		"source_key", "problem_code", "numeric_id", "title_main", "title_alt",
 		"problem_text", "solution_text", "code_snippets_json", "source_url", "difficulty", "estimated_minutes", "quality_score",

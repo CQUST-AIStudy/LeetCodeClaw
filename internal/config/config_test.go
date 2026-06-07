@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadDotEnvSetsUnsetValues(t *testing.T) {
@@ -102,6 +103,76 @@ func TestLoadUsesMainBackendDatabasePortByDefault(t *testing.T) {
 	cfg := loadFromEnv()
 	if cfg.Database.Port != "3307" {
 		t.Fatalf("Database.Port = %q, want %q", cfg.Database.Port, "3307")
+	}
+}
+
+func TestLoadUsesCrawlAllDefaults(t *testing.T) {
+	clearEnv(t, "LEETCODE_CLAW_CRAWL_ALL_WORKERS")
+	clearEnv(t, "LEETCODE_CLAW_CRAWL_ALL_PAGE_SIZE")
+	clearEnv(t, "LEETCODE_CLAW_CRAWL_ALL_DELAY")
+
+	cfg := loadFromEnv()
+
+	if cfg.CrawlAll.Workers != 1 {
+		t.Fatalf("Workers = %d, want 1", cfg.CrawlAll.Workers)
+	}
+	if cfg.CrawlAll.PageSize != 100 {
+		t.Fatalf("PageSize = %d, want 100", cfg.CrawlAll.PageSize)
+	}
+	if cfg.CrawlAll.Delay != 2*time.Second {
+		t.Fatalf("Delay = %s, want 2s", cfg.CrawlAll.Delay)
+	}
+}
+
+func TestLoadUsesSecurityDefaults(t *testing.T) {
+	clearEnv(t, "LEETCODE_CLAW_API_KEY")
+	clearEnv(t, "LEETCODE_CLAW_CORS_ORIGINS")
+
+	cfg := loadFromEnv()
+
+	if cfg.Security.APIKey != "" {
+		t.Fatalf("APIKey = %q, want empty", cfg.Security.APIKey)
+	}
+	if len(cfg.Security.CORSOrigins) != 1 || cfg.Security.CORSOrigins[0] != "*" {
+		t.Fatalf("CORSOrigins = %#v, want [*]", cfg.Security.CORSOrigins)
+	}
+}
+
+func TestLoadReadsSecurityEnv(t *testing.T) {
+	t.Setenv("LEETCODE_CLAW_API_KEY", " secret-token ")
+	t.Setenv("LEETCODE_CLAW_CORS_ORIGINS", "https://app.example.com, https://admin.example.com, ")
+
+	cfg := loadFromEnv()
+
+	if cfg.Security.APIKey != "secret-token" {
+		t.Fatalf("APIKey = %q, want trimmed token", cfg.Security.APIKey)
+	}
+	want := []string{"https://app.example.com", "https://admin.example.com"}
+	if len(cfg.Security.CORSOrigins) != len(want) {
+		t.Fatalf("CORSOrigins = %#v, want %#v", cfg.Security.CORSOrigins, want)
+	}
+	for i := range want {
+		if cfg.Security.CORSOrigins[i] != want[i] {
+			t.Fatalf("CORSOrigins[%d] = %q, want %q", i, cfg.Security.CORSOrigins[i], want[i])
+		}
+	}
+}
+
+func TestLoadReadsCrawlAllEnv(t *testing.T) {
+	t.Setenv("LEETCODE_CLAW_CRAWL_ALL_WORKERS", "3")
+	t.Setenv("LEETCODE_CLAW_CRAWL_ALL_PAGE_SIZE", "500")
+	t.Setenv("LEETCODE_CLAW_CRAWL_ALL_DELAY", "1500ms")
+
+	cfg := loadFromEnv()
+
+	if cfg.CrawlAll.Workers != 3 {
+		t.Fatalf("Workers = %d, want 3", cfg.CrawlAll.Workers)
+	}
+	if cfg.CrawlAll.PageSize != 200 {
+		t.Fatalf("PageSize = %d, want capped 200", cfg.CrawlAll.PageSize)
+	}
+	if cfg.CrawlAll.Delay != 1500*time.Millisecond {
+		t.Fatalf("Delay = %s, want 1500ms", cfg.CrawlAll.Delay)
 	}
 }
 

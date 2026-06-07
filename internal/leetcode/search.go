@@ -23,6 +23,7 @@ query problemsetQuestionList($categorySlug: String, $limit: Int, $skip: Int, $fi
       titleCn
       titleSlug
       difficulty
+      paidOnly
       topicTags {
         name
         nameTranslated
@@ -50,6 +51,7 @@ type problemsetQuestion struct {
 	TitleSlug          string         `json:"titleSlug"`
 	TranslatedTitle    string         `json:"translatedTitle"`
 	Difficulty         string         `json:"difficulty"`
+	PaidOnly           bool           `json:"paidOnly"`
 	TopicTags          []lightTagNode `json:"topicTags"`
 }
 
@@ -87,38 +89,20 @@ func (s *ProblemService) SearchProblems(ctx context.Context, options SearchOptio
 		filters["difficulty"] = strings.ToUpper(difficulty)
 	}
 
-	var data problemsetQuestionListData
-	err := s.client.doGraphQL(ctx, "https://leetcode.cn/problemset/", graphQLRequest{
-		OperationName: "problemsetQuestionList",
-		Query:         problemsetQuestionListQuery,
-		Variables: map[string]any{
-			"categorySlug": "",
-			"skip":         0,
-			"limit":        fetchLimit,
-			"filters":      filters,
-		},
-	}, &data)
+	list, err := s.fetchProblemsetQuestionList(ctx, 0, fetchLimit, filters)
 	if err != nil {
 		return nil, fmt.Errorf("search problems: %w", err)
 	}
-	if data.ProblemsetQuestionList == nil {
+	if list == nil {
 		return nil, nil
 	}
 
-	candidates := make([]SearchCandidate, 0, len(data.ProblemsetQuestionList.Questions))
-	for _, question := range data.ProblemsetQuestionList.Questions {
+	candidates := make([]SearchCandidate, 0, len(list.Questions))
+	for _, question := range list.Questions {
 		if strings.TrimSpace(question.TitleSlug) == "" {
 			continue
 		}
-		candidate := SearchCandidate{
-			QuestionID:         question.QuestionID,
-			QuestionFrontendID: firstNonEmpty(question.QuestionFrontendID, question.FrontendQuestionID),
-			Title:              question.Title,
-			TitleSlug:          question.TitleSlug,
-			TranslatedTitle:    firstNonEmpty(question.TranslatedTitle, question.TitleCn),
-			Difficulty:         NormalizeDifficulty(question.Difficulty),
-			Tags:               convertLightTags(question.TopicTags),
-		}
+		candidate := searchCandidateFromQuestion(question)
 		candidate.Score, candidate.Reason = ScoreCandidate(keyword, NormalizeDifficulty(options.Difficulty), candidate)
 		candidates = append(candidates, candidate)
 	}
@@ -133,6 +117,84 @@ func (s *ProblemService) SearchProblems(ctx context.Context, options SearchOptio
 		candidates = candidates[:limit]
 	}
 	return candidates, nil
+}
+
+func (s *ProblemService) ListPublicProblems(ctx context.Context, options PublicProblemListOptions) ([]SearchCandidate, error) {
+	pageSize := normalizePublicProblemPageSize(options.PageSize)
+	seen := map[string]bool{}
+	candidates := []SearchCandidate{}
+
+	for skip := 0; ; skip += pageSize {
+		list, err := s.fetchProblemsetQuestionList(ctx, skip, pageSize, map[string]any{})
+		if err != nil {
+			return nil, fmt.Errorf("list public problems: %w", err)
+		}
+		if list == nil || len(list.Questions) == 0 {
+			break
+		}
+
+		for _, question := range list.Questions {
+			slug := strings.TrimSpace(question.TitleSlug)
+			if slug == "" || question.PaidOnly {
+				continue
+			}
+			key := strings.ToLower(slug)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			candidates = append(candidates, searchCandidateFromQuestion(question))
+		}
+
+		if list.Total > 0 && skip+len(list.Questions) >= list.Total {
+			break
+		}
+		if len(list.Questions) < pageSize {
+			break
+		}
+	}
+
+	return candidates, nil
+}
+
+func (s *ProblemService) fetchProblemsetQuestionList(ctx context.Context, skip, limit int, filters map[string]any) (*problemsetQuestionList, error) {
+	var data problemsetQuestionListData
+	err := s.client.doGraphQL(ctx, "https://leetcode.cn/problemset/", graphQLRequest{
+		OperationName: "problemsetQuestionList",
+		Query:         problemsetQuestionListQuery,
+		Variables: map[string]any{
+			"categorySlug": "",
+			"skip":         skip,
+			"limit":        limit,
+			"filters":      filters,
+		},
+	}, &data)
+	if err != nil {
+		return nil, err
+	}
+	return data.ProblemsetQuestionList, nil
+}
+
+func searchCandidateFromQuestion(question problemsetQuestion) SearchCandidate {
+	return SearchCandidate{
+		QuestionID:         question.QuestionID,
+		QuestionFrontendID: firstNonEmpty(question.QuestionFrontendID, question.FrontendQuestionID),
+		Title:              question.Title,
+		TitleSlug:          strings.TrimSpace(question.TitleSlug),
+		TranslatedTitle:    firstNonEmpty(question.TranslatedTitle, question.TitleCn),
+		Difficulty:         NormalizeDifficulty(question.Difficulty),
+		Tags:               convertLightTags(question.TopicTags),
+	}
+}
+
+func normalizePublicProblemPageSize(pageSize int) int {
+	if pageSize <= 0 {
+		return 100
+	}
+	if pageSize > 200 {
+		return 200
+	}
+	return pageSize
 }
 
 func convertLightTags(tags []lightTagNode) []TopicTag {

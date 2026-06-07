@@ -1,0 +1,62 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?please set MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE: "${DB_NAME:-ptadatabase}"
+      MYSQL_USER: "${DB_USERNAME:-leetcode}"
+      MYSQL_PASSWORD: "${DB_PASSWORD:?please set DB_PASSWORD}"
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    ports:
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./deploy/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$${MYSQL_USER}\" -p\"$${MYSQL_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  leetcode-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: leetcodeclaw-api:local
+    restart: unless-stopped
+    environment:
+      LEETCODE_CLAW_ADDR: ":10170"
+      LEETCODE_CLAW_READ_TIMEOUT: "${LEETCODE_CLAW_READ_TIMEOUT:-30s}"
+      LEETCODE_CLAW_WRITE_TIMEOUT: "${LEETCODE_CLAW_WRITE_TIMEOUT:-120s}"
+      LEETCODE_CLAW_UPSTREAM_TIMEOUT: "${LEETCODE_CLAW_UPSTREAM_TIMEOUT:-20s}"
+      LEETCODE_CLAW_RETRIES: "${LEETCODE_CLAW_RETRIES:-2}"
+      LEETCODE_CLAW_DB_REQUIRED: "true"
+      LEETCODE_CLAW_CRAWL_ALL_WORKERS: "${LEETCODE_CLAW_CRAWL_ALL_WORKERS:-1}"
+      LEETCODE_CLAW_CRAWL_ALL_PAGE_SIZE: "${LEETCODE_CLAW_CRAWL_ALL_PAGE_SIZE:-100}"
+      LEETCODE_CLAW_CRAWL_ALL_DELAY: "${LEETCODE_CLAW_CRAWL_ALL_DELAY:-2s}"
+      LEETCODE_CLAW_API_KEY: "${LEETCODE_CLAW_API_KEY:-}"
+      LEETCODE_CLAW_CORS_ORIGINS: "${LEETCODE_CLAW_CORS_ORIGINS:-*}"
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: "${DB_NAME:-ptadatabase}"
+      DB_USERNAME: "${DB_USERNAME:-leetcode}"
+      DB_PASSWORD: "${DB_PASSWORD:?please set DB_PASSWORD}"
+    ports:
+      - "127.0.0.1:${LEETCODE_CLAW_HOST_PORT:-10170}:10170"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:10170/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  mysql-data:

@@ -16,6 +16,8 @@ type Config struct {
 	Addr       string
 	HTTP       HTTPConfig
 	LeetCode   LeetCodeConfig
+	CrawlAll   CrawlAllConfig
+	Security   SecurityConfig
 	Database   DatabaseConfig
 	DBRequired bool
 }
@@ -28,6 +30,17 @@ type HTTPConfig struct {
 type LeetCodeConfig struct {
 	Timeout time.Duration
 	Retries int
+}
+
+type CrawlAllConfig struct {
+	Workers  int
+	PageSize int
+	Delay    time.Duration
+}
+
+type SecurityConfig struct {
+	APIKey      string
+	CORSOrigins []string
 }
 
 type DatabaseConfig struct {
@@ -55,6 +68,15 @@ func loadFromEnv() Config {
 		LeetCode: LeetCodeConfig{
 			Timeout: getDurationEnv("LEETCODE_CLAW_UPSTREAM_TIMEOUT", 20*time.Second),
 			Retries: getIntEnv("LEETCODE_CLAW_RETRIES", 2),
+		},
+		CrawlAll: CrawlAllConfig{
+			Workers:  getPositiveIntEnv("LEETCODE_CLAW_CRAWL_ALL_WORKERS", 1),
+			PageSize: getPublicPageSizeEnv("LEETCODE_CLAW_CRAWL_ALL_PAGE_SIZE", 100),
+			Delay:    getNonNegativeDurationEnv("LEETCODE_CLAW_CRAWL_ALL_DELAY", 2*time.Second),
+		},
+		Security: SecurityConfig{
+			APIKey:      strings.TrimSpace(os.Getenv("LEETCODE_CLAW_API_KEY")),
+			CORSOrigins: getCSVEnv("LEETCODE_CLAW_CORS_ORIGINS", []string{"*"}),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "127.0.0.1"),
@@ -102,6 +124,14 @@ func getDurationEnv(key string, fallback time.Duration) time.Duration {
 	return value
 }
 
+func getNonNegativeDurationEnv(key string, fallback time.Duration) time.Duration {
+	value := getDurationEnv(key, fallback)
+	if value < 0 {
+		return fallback
+	}
+	return value
+}
+
 func getIntEnv(key string, fallback int) int {
 	raw := os.Getenv(key)
 	if raw == "" {
@@ -112,6 +142,40 @@ func getIntEnv(key string, fallback int) int {
 		return fallback
 	}
 	return value
+}
+
+func getPositiveIntEnv(key string, fallback int) int {
+	value := getIntEnv(key, fallback)
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func getPublicPageSizeEnv(key string, fallback int) int {
+	value := getPositiveIntEnv(key, fallback)
+	if value > 200 {
+		return 200
+	}
+	return value
+}
+
+func getCSVEnv(key string, fallback []string) []string {
+	raw := os.Getenv(key)
+	if strings.TrimSpace(raw) == "" {
+		return append([]string(nil), fallback...)
+	}
+	values := []string{}
+	for _, part := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(part)
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	if len(values) == 0 {
+		return append([]string(nil), fallback...)
+	}
+	return values
 }
 
 func firstNonEmpty(values ...string) string {

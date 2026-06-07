@@ -47,6 +47,13 @@ func main() {
 				log.Fatalf("check mysql schema: %v", err)
 			}
 			log.Printf("mysql store disabled: %v", err)
+		} else if err := candidate.CancelActiveCrawlJobs(ctx, "service restarted before crawl-all job completed"); err != nil {
+			cancel()
+			_ = candidate.Close()
+			if cfg.DBRequired {
+				log.Fatalf("recover crawl jobs: %v", err)
+			}
+			log.Printf("mysql store disabled: %v", err)
 		} else {
 			cancel()
 			store = candidate
@@ -54,7 +61,15 @@ func main() {
 		}
 	}
 
-	apiServer := api.NewServer(problemService, store)
+	apiServer := api.NewServerWithConfig(problemService, store, api.ServerConfig{
+		CrawlAll: api.CrawlAllConfig{
+			Workers:  cfg.CrawlAll.Workers,
+			PageSize: cfg.CrawlAll.PageSize,
+			Delay:    cfg.CrawlAll.Delay,
+		},
+		APIKey:      cfg.Security.APIKey,
+		CORSOrigins: cfg.Security.CORSOrigins,
+	})
 	server := &http.Server{
 		Addr:         cfg.Addr,
 		Handler:      apiServer.Routes(),
