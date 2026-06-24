@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 func TestLoadDotEnvSetsUnsetValues(t *testing.T) {
@@ -103,6 +105,24 @@ func TestLoadUsesMainBackendDatabasePortByDefault(t *testing.T) {
 	cfg := loadFromEnv()
 	if cfg.Database.Port != "3307" {
 		t.Fatalf("Database.Port = %q, want %q", cfg.Database.Port, "3307")
+	}
+}
+
+func TestDatabaseDSNAllowsNativePasswords(t *testing.T) {
+	cfg := DatabaseConfig{
+		Host:     "db.example.com",
+		Port:     "3306",
+		Name:     "ptadatabase",
+		Username: "root",
+		Password: "secret",
+	}
+
+	parsed, err := mysql.ParseDSN(cfg.DSN())
+	if err != nil {
+		t.Fatalf("ParseDSN() error = %v", err)
+	}
+	if !parsed.AllowNativePasswords {
+		t.Fatal("DSN() parsed with AllowNativePasswords = false, want true")
 	}
 }
 

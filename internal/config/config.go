@@ -98,6 +98,9 @@ func (c DatabaseConfig) DSN() string {
 		DBName:    c.Name,
 		ParseTime: true,
 		Loc:       time.Local,
+		// mysql.Config's zero value disables this plugin; RDS accounts may still
+		// require mysql_native_password authentication.
+		AllowNativePasswords: true,
 		Params: map[string]string{
 			"charset": "utf8mb4",
 		},
