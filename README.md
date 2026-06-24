@@ -9,12 +9,12 @@
 - 根据关键词搜索候选题，并按标题、标签、难度进行轻量排序。
 - 支持后台全量抓取 LeetCode 中文站公开题库。
 - 支持写入 MySQL 表 `leetcode_problem_bank`、`leetcode_problem_tag`。
-- 支持 Docker Compose 一键启动 API 与 MySQL。
+- 支持 Docker Compose 启动 API，并通过环境变量连接平台共用 MySQL。
 - 支持可选 API Key 鉴权和 CORS 来源白名单。
 
 ## Docker 快速启动
 
-推荐使用 Docker Compose 部署 API 和 MySQL。容器内 API 连接 MySQL 时必须使用服务名 `mysql` 和容器端口 `3306`，不能使用 `127.0.0.1`。
+推荐使用 Docker Compose 部署 API，并连接平台共用的 MySQL `ptadatabase`。默认不再启动独立 MySQL，避免题库数据和主平台数据库割裂。
 
 1. 复制 Docker 环境模板：
 
@@ -24,9 +24,8 @@ Copy-Item .env.docker.example .env.docker
 
 2. 修改 `.env.docker`：
 
-- 将 `MYSQL_ROOT_PASSWORD` 改为强密码。
-- 将 `DB_PASSWORD` 改为强密码。
-- 将 `LEETCODE_CLAW_API_KEY` 改为生产可用的随机密钥。
+- 将 `DB_HOST`、`DB_PORT`、`DB_USERNAME`、`DB_PASSWORD` 改为远程 MySQL 连接信息。
+- 生产环境建议设置 `LEETCODE_CLAW_API_KEY`，并同步更新调用方鉴权头；如前端仍直接调用且未携带 Key，可保持为空。
 - 按需收紧 `LEETCODE_CLAW_CORS_ORIGINS`。
 
 3. 启动服务：
@@ -39,7 +38,6 @@ docker compose --env-file .env.docker up -d --build
 
 ```text
 API:   http://127.0.0.1:10170
-MySQL: 127.0.0.1:3307
 ```
 
 查看状态：
@@ -55,11 +53,7 @@ docker compose --env-file .env.docker logs -f leetcode-api
 docker compose --env-file .env.docker down
 ```
 
-如需删除 MySQL 数据卷并重新初始化表结构：
-
-```powershell
-docker compose --env-file .env.docker down -v
-```
+停止服务不会影响远程数据库数据。
 
 ## 本地开发启动
 
@@ -76,14 +70,14 @@ go run ./cmd/leetcode-api
 http://127.0.0.1:10170
 ```
 
-如果 MySQL 在 Docker 中运行且映射到宿主机 `3307`，本地 `.env` 可使用：
+如果 MySQL 在宿主机或远程服务器运行，本地 `.env` 可使用：
 
 ```dotenv
 DB_HOST=127.0.0.1
-DB_PORT=3307
+DB_PORT=3306
 ```
 
-如果 API 也运行在 Docker 容器中，应使用：
+如果 API 和 MySQL 在同一个 Docker 网络中，`DB_HOST` 可使用 MySQL 服务名：
 
 ```dotenv
 DB_HOST=mysql
@@ -108,7 +102,7 @@ DB_PORT=3306
 | `LEETCODE_CLAW_API_KEY` | 空 | 非空时保护 `/api/` 业务接口 |
 | `LEETCODE_CLAW_CORS_ORIGINS` | `*` | 允许的 CORS 来源，多个来源用英文逗号分隔 |
 | `DB_HOST` | `127.0.0.1` | MySQL 主机 |
-| `DB_PORT` | `3307` | MySQL 端口 |
+| `DB_PORT` | `3306` | MySQL 端口 |
 | `DB_NAME` | `ptadatabase` | 数据库名 |
 | `DB_USERNAME` | `root` | 数据库用户名 |
 | `DB_PASSWORD` / `DB_PASS` | 空 | 数据库密码 |
@@ -218,7 +212,7 @@ GET /api/leetcode/problem/{slug}?crawl=true
 
 ## 数据库说明
 
-Docker Compose 首次初始化 MySQL 数据卷时，会执行 `deploy/mysql/init/001_leetcode_schema.sql` 创建题库表。若数据卷已经存在，MySQL 不会重复执行初始化脚本。
+服务会连接 `DB_*` 指向的共用 MySQL。首次部署前需要确保 `deploy/mysql/init/001_leetcode_schema.sql` 中的题库表已经导入到 `ptadatabase`，或由平台数据库迁移流程创建等价表结构。
 
 写库要求以下核心字段存在：
 
@@ -268,23 +262,25 @@ docker compose --env-file .env.docker.example config
 
 ### API 容器连不上 MySQL
 
-确认 Docker Compose 中 API 使用的是：
+如果 MySQL 在宿主机上，确认 Docker Compose 中 API 使用的是：
+
+```dotenv
+DB_HOST=host.docker.internal
+DB_PORT=3306
+```
+
+如果 MySQL 在同一个 Docker 网络中，确认使用的是：
 
 ```dotenv
 DB_HOST=mysql
 DB_PORT=3306
 ```
 
-`127.0.0.1` 在 API 容器内表示 API 容器自身，不是 MySQL 容器。
+`127.0.0.1` 在 API 容器内表示 API 容器自身，不是宿主机或其他 MySQL 容器。
 
 ### 修改初始化 SQL 后没有生效
 
-MySQL 官方镜像只会在空数据目录首次启动时执行 `/docker-entrypoint-initdb.d`。本地调试可删除数据卷后重新启动：
-
-```powershell
-docker compose --env-file .env.docker down -v
-docker compose --env-file .env.docker up -d --build
-```
+当前 compose 不再内置 MySQL；修改 SQL 后需要通过数据库迁移或手动导入方式应用到远程库。
 
 ### `/ready` 返回 503
 
